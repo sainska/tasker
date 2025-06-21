@@ -80,4 +80,7 @@ SELECT
 FROM pg_tables 
 WHERE schemaname = 'public' AND tablename = 'profiles';
 
+-- Add status to profiles
+ALTER TABLE profiles ADD COLUMN status TEXT NOT NULL DEFAULT 'pending';
+
 COMMIT; 
