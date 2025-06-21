@@ -6,25 +6,18 @@ type AssignmentInsert = Database['public']['Tables']['assignments']['Insert'];
 type AssignmentUpdate = Database['public']['Tables']['assignments']['Update'];
 
 export class AssignmentService {
-  // Get all assignments for a user (client, writer, or admin)
-  static async getAssignments(userId: string, role: 'client' | 'writer' | 'admin') {
+  // Get assignments for a specific user (client or writer)
+  static async getAssignments(userId: string, role: 'client' | 'writer') {
     try {
-      let query = supabase
+      const { data, error } = await supabase
         .from('assignments')
         .select(`
           *,
           client:profiles!assignments_client_id_fkey(id, first_name, last_name, email),
           writer:profiles!assignments_writer_id_fkey(id, first_name, last_name, email)
-        `);
-
-      if (role === 'client') {
-        query = query.eq('client_id', userId);
-      } else if (role === 'writer') {
-        query = query.eq('writer_id', userId);
-      }
-      // Admin can see all assignments
-
-      const { data, error } = await query.order('created_at', { ascending: false });
+        `)
+        .eq(role === 'client' ? 'client_id' : 'writer_id', userId)
+        .order('created_at', { ascending: false });
 
       if (error) {
         console.error('Error fetching assignments:', error);
@@ -34,6 +27,30 @@ export class AssignmentService {
       return data;
     } catch (error) {
       console.error('AssignmentService.getAssignments error:', error);
+      throw error;
+    }
+  }
+
+  // Get all assignments (admin only)
+  static async getAllAssignments() {
+    try {
+      const { data, error } = await supabase
+        .from('assignments')
+        .select(`
+          *,
+          client:profiles!assignments_client_id_fkey(id, first_name, last_name, email),
+          writer:profiles!assignments_writer_id_fkey(id, first_name, last_name, email)
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching all assignments:', error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('AssignmentService.getAllAssignments error:', error);
       throw error;
     }
   }

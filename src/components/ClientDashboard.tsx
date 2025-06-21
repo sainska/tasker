@@ -1,68 +1,140 @@
-
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Clock, CheckCircle, AlertCircle, Plus, LogOut } from "lucide-react";
+import { FileText, Clock, CheckCircle, AlertCircle, Plus, LogOut, Download, MessageSquare, Eye } from "lucide-react";
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import { AssignmentService } from '@/services/assignmentService';
+import { SubmissionService } from '@/services/submissionService';
+import { UserService } from '@/services/userService';
+import NewAssignmentModal from './NewAssignmentModal';
+import { toast } from '@/components/ui/use-toast';
+import { Database } from '@/integrations/supabase/types';
+
+type Assignment = Database['public']['Tables']['assignments']['Row'] & {
+  client?: { id: string; first_name?: string; last_name?: string; email: string };
+  writer?: { id: string; first_name?: string; last_name?: string; email: string };
+};
 
 const ClientDashboard = () => {
   const { profile, signOut } = useAuth();
   const navigate = useNavigate();
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [stats, setStats] = useState({
+    totalAssignments: 0,
+    completedAssignments: 0,
+    pendingAssignments: 0,
+    inProgressAssignments: 0
+  });
+  const [loading, setLoading] = useState(true);
+
+  const fetchAssignments = async () => {
+    if (!profile) return;
+    
+    try {
+      const data = await AssignmentService.getAssignments(profile.id, 'client');
+      setAssignments(data || []);
+    } catch (error) {
+      console.error('Error fetching assignments:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load assignments",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const fetchStats = async () => {
+    if (!profile) return;
+    
+    try {
+      const userStats = await UserService.getUserStats(profile.id, 'client');
+      setStats(userStats);
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+    }
+  };
+
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      await Promise.all([fetchAssignments(), fetchStats()]);
+      setLoading(false);
+    };
+    
+    loadData();
+  }, [profile]);
 
   const handleSignOut = async () => {
     await signOut();
     navigate('/');
   };
 
-  const assignments = [
-    {
-      id: 1,
-      title: "Marketing Strategy Analysis",
-      subject: "Business",
-      status: "in_progress",
-      deadline: "2024-01-15",
-      submittedAt: "2024-01-10",
-      pages: 8,
-      budget: 150,
-      writer: "Professional Writer",
-      description: "Comprehensive analysis of current marketing trends and strategies...",
-      hasUpdate: true
-    },
-    {
-      id: 2,
-      title: "Environmental Impact Study", 
-      subject: "Environmental Science",
-      status: "completed",
-      deadline: "2024-01-20",
-      submittedAt: "2024-01-08",
-      pages: 12,
-      budget: 200,
-      writer: "Expert Researcher",
-      description: "Analysis of carbon footprint reduction strategies...",
-      hasUpdate: false
-    },
-    {
-      id: 3,
-      title: "Database Design Project",
-      subject: "Computer Science", 
-      status: "revision_requested",
-      deadline: "2024-01-18",
-      submittedAt: "2024-01-12",
-      pages: 6,
-      budget: 120,
-      writer: "Technical Writer", 
-      description: "Comprehensive database design documentation...",
-      hasUpdate: true
+  const handleDownloadSubmission = async (submissionId: string) => {
+    try {
+      const submission = await SubmissionService.getSubmissionById(submissionId);
+      
+      if (submission.file_url) {
+        // Create a temporary link to download the file
+        const link = document.createElement('a');
+        link.href = submission.file_url;
+        link.download = `submission-${submissionId}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        toast({
+          title: "Success",
+          description: "File download started"
+        });
+      } else {
+        toast({
+          title: "No File",
+          description: "No file attached to this submission",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Error downloading submission:', error);
+      toast({
+        title: "Error",
+        description: "Failed to download file",
+        variant: "destructive"
+      });
     }
-  ];
+  };
+
+  const handleViewSubmission = async (submissionId: string) => {
+    try {
+      const submission = await SubmissionService.getSubmissionById(submissionId);
+      
+      if (submission.file_url) {
+        // Open file in new tab
+        window.open(submission.file_url, '_blank');
+      } else {
+        toast({
+          title: "No File",
+          description: "No file attached to this submission",
+          variant: "destructive"
+        });
+      }
+    } catch (error) {
+      console.error('Error viewing submission:', error);
+      toast({
+        title: "Error",
+        description: "Failed to view submission",
+        variant: "destructive"
+      });
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case "completed": return "bg-green-100 text-green-800";
       case "in_progress": return "bg-blue-100 text-blue-800";
+      case "submitted": return "bg-purple-100 text-purple-800";
       case "revision_requested": return "bg-yellow-100 text-yellow-800";
       case "pending": return "bg-gray-100 text-gray-800";
       default: return "bg-gray-100 text-gray-800";
@@ -73,10 +145,27 @@ const ClientDashboard = () => {
     switch (status) {
       case "completed": return <CheckCircle className="h-4 w-4" />;
       case "in_progress": return <Clock className="h-4 w-4" />;
+      case "submitted": return <FileText className="h-4 w-4" />;
       case "revision_requested": return <AlertCircle className="h-4 w-4" />;
       default: return <FileText className="h-4 w-4" />;
     }
   };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -86,7 +175,7 @@ const ClientDashboard = () => {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Client Dashboard</h1>
             <p className="text-gray-600">
-              Welcome back, {profile?.first_name || 'Client'}! You have 2 active assignments.
+              Welcome back, {profile?.first_name || 'Client'}! You have {stats.inProgressAssignments} active assignments.
             </p>
           </div>
           <Button variant="outline" onClick={handleSignOut}>
@@ -105,7 +194,7 @@ const ClientDashboard = () => {
                 <FileText className="h-8 w-8 text-blue-600" />
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600">Total Assignments</p>
-                  <p className="text-2xl font-bold text-gray-900">12</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.totalAssignments}</p>
                 </div>
               </div>
             </CardContent>
@@ -117,7 +206,7 @@ const ClientDashboard = () => {
                 <Clock className="h-8 w-8 text-yellow-600" />
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600">In Progress</p>
-                  <p className="text-2xl font-bold text-gray-900">2</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.inProgressAssignments}</p>
                 </div>
               </div>
             </CardContent>
@@ -129,7 +218,7 @@ const ClientDashboard = () => {
                 <CheckCircle className="h-8 w-8 text-green-600" />
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600">Completed</p>
-                  <p className="text-2xl font-bold text-gray-900">9</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.completedAssignments}</p>
                 </div>
               </div>
             </CardContent>
@@ -140,8 +229,8 @@ const ClientDashboard = () => {
               <div className="flex items-center">
                 <AlertCircle className="h-8 w-8 text-orange-600" />
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-600">Needs Review</p>
-                  <p className="text-2xl font-bold text-gray-900">1</p>
+                  <p className="text-sm font-medium text-gray-600">Pending</p>
+                  <p className="text-2xl font-bold text-gray-900">{stats.pendingAssignments}</p>
                 </div>
               </div>
             </CardContent>
@@ -150,147 +239,19 @@ const ClientDashboard = () => {
 
         {/* Quick Actions */}
         <div className="mb-8">
-          <Button className="bg-blue-600 hover:bg-blue-700">
-            <Plus className="h-4 w-4 mr-2" />
-            New Assignment
-          </Button>
+          <NewAssignmentModal onAssignmentCreated={fetchAssignments} />
         </div>
 
         {/* Assignments Tabs */}
-        <Tabs defaultValue="active" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="active">Active</TabsTrigger>
+        <Tabs defaultValue="all" className="w-full">
+          <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="all">All</TabsTrigger>
+            <TabsTrigger value="pending">Pending</TabsTrigger>
+            <TabsTrigger value="in_progress">In Progress</TabsTrigger>
+            <TabsTrigger value="submitted">Submitted</TabsTrigger>
             <TabsTrigger value="completed">Completed</TabsTrigger>
-            <TabsTrigger value="revisions">Revisions</TabsTrigger>
-            <TabsTrigger value="all">All Assignments</TabsTrigger>
           </TabsList>
           
-          <TabsContent value="active" className="mt-6">
-            <div className="grid gap-6">
-              {assignments.filter(a => a.status === "in_progress").map((assignment) => (
-                <Card key={assignment.id} className="hover:shadow-lg transition-shadow">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <div className="flex items-center space-x-2">
-                      <CardTitle className="text-lg">{assignment.title}</CardTitle>
-                      <Badge variant="outline">{assignment.subject}</Badge>
-                      {assignment.hasUpdate && (
-                        <Badge className="bg-blue-100 text-blue-800">New Update</Badge>
-                      )}
-                    </div>
-                    <Badge className={getStatusColor(assignment.status)}>
-                      {getStatusIcon(assignment.status)}
-                      <span className="ml-1 capitalize">{assignment.status.replace('_', ' ')}</span>
-                    </Badge>
-                  </CardHeader>
-                  <CardContent>
-                    <CardDescription className="mb-4">
-                      {assignment.description}
-                    </CardDescription>
-                    <div className="grid grid-cols-4 gap-4 mb-4 text-sm text-gray-600">
-                      <span>Writer: {assignment.writer}</span>
-                      <span>Deadline: {assignment.deadline}</span>
-                      <span>Pages: {assignment.pages}</span>
-                      <span>Budget: ${assignment.budget}</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-                        View Progress
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        Message Writer
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        Download Files
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="completed" className="mt-6">
-            <div className="grid gap-6">
-              {assignments.filter(a => a.status === "completed").map((assignment) => (
-                <Card key={assignment.id} className="hover:shadow-lg transition-shadow">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <div className="flex items-center space-x-2">
-                      <CardTitle className="text-lg">{assignment.title}</CardTitle>
-                      <Badge variant="outline">{assignment.subject}</Badge>
-                    </div>
-                    <Badge className="bg-green-100 text-green-800">
-                      <CheckCircle className="h-4 w-4 mr-1" />
-                      Completed
-                    </Badge>
-                  </CardHeader>
-                  <CardContent>
-                    <CardDescription className="mb-4">
-                      {assignment.description}
-                    </CardDescription>
-                    <div className="grid grid-cols-4 gap-4 mb-4 text-sm text-gray-600">
-                      <span>Writer: {assignment.writer}</span>
-                      <span>Completed: {assignment.deadline}</span>
-                      <span>Pages: {assignment.pages}</span>
-                      <span>Paid: ${assignment.budget}</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" className="bg-green-600 hover:bg-green-700">
-                        Download Final
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        Leave Review
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        Reorder
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </TabsContent>
-
-          <TabsContent value="revisions" className="mt-6">
-            <div className="grid gap-6">
-              {assignments.filter(a => a.status === "revision_requested").map((assignment) => (
-                <Card key={assignment.id} className="hover:shadow-lg transition-shadow border-yellow-200">
-                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <div className="flex items-center space-x-2">
-                      <CardTitle className="text-lg">{assignment.title}</CardTitle>
-                      <Badge variant="outline">{assignment.subject}</Badge>
-                    </div>
-                    <Badge className="bg-yellow-100 text-yellow-800">
-                      <AlertCircle className="h-4 w-4 mr-1" />
-                      Revision Requested
-                    </Badge>
-                  </CardHeader>
-                  <CardContent>
-                    <CardDescription className="mb-4">
-                      {assignment.description}
-                    </CardDescription>
-                    <div className="grid grid-cols-4 gap-4 mb-4 text-sm text-gray-600">
-                      <span>Writer: {assignment.writer}</span>
-                      <span>Deadline: {assignment.deadline}</span>
-                      <span>Pages: {assignment.pages}</span>
-                      <span>Budget: ${assignment.budget}</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" className="bg-yellow-600 hover:bg-yellow-700">
-                        Review Changes
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        Add Comments
-                      </Button>
-                      <Button variant="outline" size="sm">
-                        Approve Work
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          </TabsContent>
-
           <TabsContent value="all" className="mt-6">
             <div className="grid gap-6">
               {assignments.map((assignment) => (
@@ -299,27 +260,132 @@ const ClientDashboard = () => {
                     <div className="flex items-center space-x-2">
                       <CardTitle className="text-lg">{assignment.title}</CardTitle>
                       <Badge variant="outline">{assignment.subject}</Badge>
+                      <Badge className={getStatusColor(assignment.status)}>
+                        {getStatusIcon(assignment.status)}
+                        <span className="ml-1 capitalize">{assignment.status.replace('_', ' ')}</span>
+                      </Badge>
                     </div>
-                    <Badge className={getStatusColor(assignment.status)}>
-                      {getStatusIcon(assignment.status)}
-                      <span className="ml-1 capitalize">{assignment.status.replace('_', ' ')}</span>
-                    </Badge>
                   </CardHeader>
                   <CardContent>
                     <CardDescription className="mb-4">
                       {assignment.description}
                     </CardDescription>
                     <div className="grid grid-cols-4 gap-4 mb-4 text-sm text-gray-600">
-                      <span>Writer: {assignment.writer}</span>
-                      <span>Deadline: {assignment.deadline}</span>
+                      <span>Writer: {assignment.writer ? `${assignment.writer.first_name} ${assignment.writer.last_name}` : 'Unassigned'}</span>
+                      <span>Deadline: {formatDate(assignment.deadline)}</span>
                       <span>Pages: {assignment.pages}</span>
                       <span>Budget: ${assignment.budget}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline">
+                        <MessageSquare className="h-4 w-4 mr-1" />
+                        Message
+                      </Button>
+                      {assignment.status === 'submitted' && (
+                        <>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleViewSubmission(assignment.id)}
+                          >
+                            <Eye className="h-4 w-4 mr-1" />
+                            View
+                          </Button>
+                          <Button 
+                            size="sm" 
+                            variant="outline"
+                            onClick={() => handleDownloadSubmission(assignment.id)}
+                          >
+                            <Download className="h-4 w-4 mr-1" />
+                            Download
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
               ))}
+              {assignments.length === 0 && (
+                <Card>
+                  <CardContent className="p-8 text-center">
+                    <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">No assignments yet</h3>
+                    <p className="text-gray-600 mb-4">Create your first assignment to get started.</p>
+                    <NewAssignmentModal onAssignmentCreated={fetchAssignments} />
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </TabsContent>
+          
+          {['pending', 'in_progress', 'submitted', 'completed'].map((status) => (
+            <TabsContent key={status} value={status} className="mt-6">
+              <div className="grid gap-6">
+                {assignments
+                  .filter(a => a.status === status)
+                  .map((assignment) => (
+                    <Card key={assignment.id} className="hover:shadow-lg transition-shadow">
+                      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <div className="flex items-center space-x-2">
+                          <CardTitle className="text-lg">{assignment.title}</CardTitle>
+                          <Badge variant="outline">{assignment.subject}</Badge>
+                          <Badge className={getStatusColor(assignment.status)}>
+                            {getStatusIcon(assignment.status)}
+                            <span className="ml-1 capitalize">{assignment.status.replace('_', ' ')}</span>
+                          </Badge>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <CardDescription className="mb-4">
+                          {assignment.description}
+                        </CardDescription>
+                        <div className="grid grid-cols-4 gap-4 mb-4 text-sm text-gray-600">
+                          <span>Writer: {assignment.writer ? `${assignment.writer.first_name} ${assignment.writer.last_name}` : 'Unassigned'}</span>
+                          <span>Deadline: {formatDate(assignment.deadline)}</span>
+                          <span>Pages: {assignment.pages}</span>
+                          <span>Budget: ${assignment.budget}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline">
+                            <MessageSquare className="h-4 w-4 mr-1" />
+                            Message
+                          </Button>
+                          {assignment.status === 'submitted' && (
+                            <>
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => handleViewSubmission(assignment.id)}
+                              >
+                                <Eye className="h-4 w-4 mr-1" />
+                                View
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                onClick={() => handleDownloadSubmission(assignment.id)}
+                              >
+                                <Download className="h-4 w-4 mr-1" />
+                                Download
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                {assignments.filter(a => a.status === status).length === 0 && (
+                  <Card>
+                    <CardContent className="p-8 text-center">
+                      <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No {status.replace('_', ' ')} assignments</h3>
+                      <p className="text-gray-600">You don't have any {status.replace('_', ' ')} assignments yet.</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            </TabsContent>
+          ))}
         </Tabs>
       </div>
     </div>

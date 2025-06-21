@@ -1,21 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { Navigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useSearchParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { FileText, AlertCircle, Mail, Lock } from 'lucide-react';
+import { FileText, AlertCircle, Mail, Lock, CheckCircle } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 
 const Auth = () => {
-  const { user, signIn, signUp, resetPassword, loading } = useAuth();
+  const { user, profile, signIn, signUp, resetPassword, loading, getDashboardUrl } = useAuth();
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [needsEmailConfirmation, setNeedsEmailConfirmation] = useState(false);
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
@@ -39,10 +41,14 @@ const Auth = () => {
     }
   }, [searchParams]);
 
-  // Redirect authenticated users
-  if (user && !loading) {
-    return <Navigate to="/" replace />;
-  }
+  // Redirect authenticated users to their dashboard
+  useEffect(() => {
+    if (user && profile && !loading) {
+      const dashboardUrl = getDashboardUrl();
+      console.log('Redirecting to dashboard:', dashboardUrl);
+      navigate(dashboardUrl, { replace: true });
+    }
+  }, [user, profile, loading, navigate, getDashboardUrl]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -63,6 +69,7 @@ const Auth = () => {
         title: "Success",
         description: "Successfully logged in!"
       });
+      // Navigation will be handled by useEffect
     }
     
     setIsLoading(false);
@@ -73,7 +80,7 @@ const Auth = () => {
     setIsLoading(true);
     setError('');
 
-    const { error } = await signUp(signupEmail, signupPassword, firstName, lastName, role);
+    const { error, needsConfirmation } = await signUp(signupEmail, signupPassword, firstName, lastName, role);
     
     if (error) {
       setError(error.message);
@@ -83,11 +90,21 @@ const Auth = () => {
         variant: "destructive"
       });
     } else {
-      setSuccessMessage('Account created successfully! Please check your email to verify your account.');
-      toast({
-        title: "Success",
-        description: "Account created successfully! Please check your email to verify your account."
-      });
+      if (needsConfirmation) {
+        setNeedsEmailConfirmation(true);
+        setSuccessMessage('Account created successfully! Please check your email to verify your account.');
+        toast({
+          title: "Success",
+          description: "Account created successfully! Please check your email to verify your account."
+        });
+      } else {
+        setSuccessMessage('Account created successfully! Redirecting to dashboard...');
+        toast({
+          title: "Success",
+          description: "Account created successfully! Redirecting to dashboard..."
+        });
+        // Navigation will be handled by useEffect
+      }
     }
     
     setIsLoading(false);
@@ -123,6 +140,44 @@ const Auth = () => {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  // Show email confirmation message
+  if (needsEmailConfirmation) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="flex items-center justify-center space-x-2 mb-4">
+              <Mail className="h-8 w-8 text-blue-600" />
+              <span className="text-2xl font-bold text-gray-900">Check Your Email</span>
+            </div>
+            <CardTitle>Email Verification Required</CardTitle>
+            <CardDescription>
+              We've sent a verification link to your email address.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="text-center">
+            <div className="flex items-center justify-center space-x-2 text-green-600 mb-4">
+              <CheckCircle className="h-4 w-4" />
+              <span>Account created successfully!</span>
+            </div>
+            <p className="text-sm text-gray-600 mb-4">
+              Please check your email and click the verification link to complete your registration.
+            </p>
+            <Button 
+              onClick={() => {
+                setNeedsEmailConfirmation(false);
+                setSuccessMessage('');
+              }}
+              className="w-full"
+            >
+              Back to Login
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }

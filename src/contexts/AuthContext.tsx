@@ -25,6 +25,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchProfile = async (userId: string): Promise<ProfileType | null> => {
     try {
       console.log('Fetching profile for user:', userId);
+      
+      // First, let's check if the user exists in auth
+      const { data: userData, error: userError } = await supabase.auth.getUser();
+      if (userError) {
+        console.error('Error getting user from auth:', userError);
+        return null;
+      }
+      
+      if (!userData.user) {
+        console.error('No user found in auth');
+        return null;
+      }
+      
+      console.log('User authenticated, fetching profile from database...');
+      
+      // Try to fetch the profile
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -33,18 +49,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (error) {
         console.error('Error fetching profile:', error);
+        
         // If profile doesn't exist, try to create it manually
-        if (error.code === 'PGRST116') {
+        if (error.code === 'PGRST116' || error.message?.includes('No rows found')) {
           console.log('Profile not found, attempting to create one...');
           return await createProfileManually(userId);
         }
+        
+        // If it's a 500 error, there might be an RLS issue
+        if (error.code === '500' || error.message?.includes('500')) {
+          console.error('500 error - possible RLS issue. User ID:', userId);
+          console.error('Full error:', error);
+          
+          // Try to create profile manually as fallback
+          console.log('Attempting to create profile as fallback...');
+          return await createProfileManually(userId);
+        }
+        
         return null;
       }
+      
       console.log('Profile fetched successfully:', data);
       return data;
     } catch (error) {
-      console.error('Error fetching profile:', error);
-      return null;
+      console.error('Error in fetchProfile:', error);
+      
+      // If there's an exception, try to create profile manually
+      try {
+        console.log('Exception occurred, attempting to create profile manually...');
+        return await createProfileManually(userId);
+      } catch (createError) {
+        console.error('Failed to create profile manually:', createError);
+        return null;
+      }
     }
   };
 
