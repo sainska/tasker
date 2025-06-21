@@ -1,19 +1,21 @@
-
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, AlertCircle } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { FileText, AlertCircle, Mail, Lock } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 
 const Auth = () => {
-  const { user, signIn, signUp, loading } = useAuth();
+  const { user, signIn, signUp, resetPassword, loading } = useAuth();
+  const [searchParams] = useSearchParams();
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   // Login form state
   const [loginEmail, setLoginEmail] = useState('');
@@ -24,6 +26,18 @@ const Auth = () => {
   const [signupPassword, setSignupPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [role, setRole] = useState<'client' | 'writer' | 'admin'>('client');
+
+  // Password reset state
+  const [resetEmail, setResetEmail] = useState('');
+  const [showResetForm, setShowResetForm] = useState(false);
+
+  // Check if we're in password reset mode
+  useEffect(() => {
+    if (searchParams.get('reset') === 'true') {
+      setShowResetForm(true);
+    }
+  }, [searchParams]);
 
   // Redirect authenticated users
   if (user && !loading) {
@@ -59,7 +73,7 @@ const Auth = () => {
     setIsLoading(true);
     setError('');
 
-    const { error } = await signUp(signupEmail, signupPassword, firstName, lastName);
+    const { error } = await signUp(signupEmail, signupPassword, firstName, lastName, role);
     
     if (error) {
       setError(error.message);
@@ -69,6 +83,7 @@ const Auth = () => {
         variant: "destructive"
       });
     } else {
+      setSuccessMessage('Account created successfully! Please check your email to verify your account.');
       toast({
         title: "Success",
         description: "Account created successfully! Please check your email to verify your account."
@@ -78,10 +93,98 @@ const Auth = () => {
     setIsLoading(false);
   };
 
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setError('');
+
+    const { error } = await resetPassword(resetEmail);
+    
+    if (error) {
+      setError(error.message);
+      toast({
+        title: "Password Reset Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    } else {
+      setSuccessMessage('Password reset email sent! Please check your inbox.');
+      toast({
+        title: "Success",
+        description: "Password reset email sent! Please check your inbox."
+      });
+      setShowResetForm(false);
+    }
+    
+    setIsLoading(false);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  if (showResetForm) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md">
+          <CardHeader className="text-center">
+            <div className="flex items-center justify-center space-x-2 mb-4">
+              <Lock className="h-8 w-8 text-blue-600" />
+              <span className="text-2xl font-bold text-gray-900">Reset Password</span>
+            </div>
+            <CardTitle>Forgot your password?</CardTitle>
+            <CardDescription>
+              Enter your email address and we'll send you a link to reset your password.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handlePasswordReset} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="reset-email">Email</Label>
+                <Input
+                  id="reset-email"
+                  type="email"
+                  placeholder="Enter your email"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  required
+                />
+              </div>
+              {error && (
+                <div className="flex items-center space-x-2 text-red-600 text-sm">
+                  <AlertCircle className="h-4 w-4" />
+                  <span>{error}</span>
+                </div>
+              )}
+              {successMessage && (
+                <div className="flex items-center space-x-2 text-green-600 text-sm">
+                  <Mail className="h-4 w-4" />
+                  <span>{successMessage}</span>
+                </div>
+              )}
+              <div className="flex gap-2">
+                <Button 
+                  type="submit" 
+                  className="flex-1" 
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Sending..." : "Send Reset Link"}
+                </Button>
+                <Button 
+                  type="button" 
+                  variant="outline"
+                  onClick={() => setShowResetForm(false)}
+                >
+                  Back to Login
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -130,6 +233,16 @@ const Auth = () => {
                     required
                   />
                 </div>
+                <div className="text-right">
+                  <Button 
+                    type="button" 
+                    variant="link" 
+                    className="text-sm"
+                    onClick={() => setShowResetForm(true)}
+                  >
+                    Forgot password?
+                  </Button>
+                </div>
                 {error && (
                   <div className="flex items-center space-x-2 text-red-600 text-sm">
                     <AlertCircle className="h-4 w-4" />
@@ -169,6 +282,19 @@ const Auth = () => {
                   </div>
                 </div>
                 <div className="space-y-2">
+                  <Label htmlFor="role">Role</Label>
+                  <Select value={role} onValueChange={(value: 'client' | 'writer' | 'admin') => setRole(value)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select your role" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="client">Client</SelectItem>
+                      <SelectItem value="writer">Writer</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
                   <Label htmlFor="signup-email">Email</Label>
                   <Input
                     id="signup-email"
@@ -194,6 +320,12 @@ const Auth = () => {
                   <div className="flex items-center space-x-2 text-red-600 text-sm">
                     <AlertCircle className="h-4 w-4" />
                     <span>{error}</span>
+                  </div>
+                )}
+                {successMessage && (
+                  <div className="flex items-center space-x-2 text-green-600 text-sm">
+                    <Mail className="h-4 w-4" />
+                    <span>{successMessage}</span>
                   </div>
                 )}
                 <Button 

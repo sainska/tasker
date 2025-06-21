@@ -1,13 +1,6 @@
+import { Database } from '@/integrations/supabase/types';
 
-export interface Profile {
-  id: string;
-  email: string;
-  first_name?: string;
-  last_name?: string;
-  role: 'client' | 'writer' | 'admin';
-  created_at: string;
-  updated_at: string;
-}
+export type Profile = Database['public']['Tables']['profiles']['Row'];
 
 export interface AuthContextType {
   user: any;
@@ -15,6 +8,9 @@ export interface AuthContextType {
   session: any;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: any }>;
-  signUp: (email: string, password: string, firstName?: string, lastName?: string) => Promise<{ error: any }>;
+  signUp: (email: string, password: string, firstName?: string, lastName?: string, role?: 'client' | 'writer' | 'admin') => Promise<{ error: any; data?: any; needsConfirmation?: boolean }>;
   signOut: () => Promise<void>;
+  updateProfile: (updates: Partial<Profile>) => Promise<{ error: any }>;
+  resetPassword: (email: string) => Promise<{ error: any }>;
+  getDashboardUrl: () => string;
 }

@@ -1,3 +1,6 @@
+-- Tasker Database Setup Script
+-- Run this in your Supabase SQL Editor
+
 -- Drop existing tables if they exist (in reverse dependency order)
 DROP TABLE IF EXISTS public.notifications CASCADE;
 DROP TABLE IF EXISTS public.ratings CASCADE;
@@ -300,3 +303,6 @@ CREATE INDEX idx_messages_sender_id ON public.messages(sender_id);
 CREATE INDEX idx_messages_recipient_id ON public.messages(recipient_id);
 CREATE INDEX idx_notifications_user_id ON public.notifications(user_id);
 CREATE INDEX idx_notifications_is_read ON public.notifications(is_read);
+
+-- Verify setup
+SELECT 'Database setup completed successfully!' as status; 
