@@ -12,7 +12,7 @@ const Index = () => {
         <div className="container mx-auto px-4 py-4 flex justify-between items-center">
           <div className="flex items-center space-x-2">
             <FileText className="h-8 w-8 text-blue-600" />
-            <h1 className="text-2xl font-bold text-gray-900">AssignFlow</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Tasker</h1>
           </div>
           <nav className="hidden md:flex space-x-6">
             <Link to="/client-login" className="text-gray-600 hover:text-blue-600 transition-colors">Client Portal</Link>
@@ -92,7 +92,7 @@ const Index = () => {
       <section className="bg-white py-16">
         <div className="container mx-auto px-4">
           <h3 className="text-3xl font-bold text-center text-gray-900 mb-12">
-            Why Choose AssignFlow?
+            Why Choose Tasker?
           </h3>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
@@ -116,7 +116,7 @@ const Index = () => {
         <div className="container mx-auto px-4 text-center">
           <div className="flex items-center justify-center space-x-2 mb-6">
             <FileText className="h-6 w-6" />
-            <span className="text-xl font-bold">AssignFlow</span>
+            <span className="text-xl font-bold">Tasker</span>
           </div>
           <p className="text-gray-400 mb-6">
             Connecting clients and writers through secure, professional assignment management.
