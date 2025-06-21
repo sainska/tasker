@@ -3,9 +3,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Clock, CheckCircle, AlertCircle, Download, Upload } from "lucide-react";
+import { FileText, Clock, CheckCircle, AlertCircle, Download, Upload, LogOut } from "lucide-react";
+import { useAuth } from '@/contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 const WriterDashboard = () => {
+  const { profile, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/');
+  };
+
   const assignments = [
     {
       id: 1,
@@ -77,9 +87,17 @@ const WriterDashboard = () => {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b">
-        <div className="container mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold text-gray-900">Writer Dashboard</h1>
-          <p className="text-gray-600">Welcome back! You have 2 active assignments.</p>
+        <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Writer Dashboard</h1>
+            <p className="text-gray-600">
+              Welcome back, {profile?.first_name || 'Writer'}! You have 2 active assignments.
+            </p>
+          </div>
+          <Button variant="outline" onClick={handleSignOut}>
+            <LogOut className="h-4 w-4 mr-2" />
+            Sign Out
+          </Button>
         </div>
       </header>
 

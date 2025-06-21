@@ -1,10 +1,30 @@
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Users, FileText, Shield, CheckCircle } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Users, FileText, Shield, CheckCircle, LogOut } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 
 const Index = () => {
+  const { user, profile, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/');
+  };
+
+  const getDashboardLink = () => {
+    if (!profile) return '/auth';
+    
+    switch (profile.role) {
+      case 'admin': return '/admin-dashboard';
+      case 'writer': return '/writer-dashboard';
+      case 'client': return '/client-dashboard';
+      default: return '/auth';
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Header */}
@@ -14,10 +34,30 @@ const Index = () => {
             <FileText className="h-8 w-8 text-blue-600" />
             <h1 className="text-2xl font-bold text-gray-900">Tasker</h1>
           </div>
-          <nav className="hidden md:flex space-x-6">
-            <Link to="/client-login" className="text-gray-600 hover:text-blue-600 transition-colors">Client Portal</Link>
-            <Link to="/writer-login" className="text-gray-600 hover:text-blue-600 transition-colors">Writer Portal</Link>
-            <Link to="/admin-login" className="text-gray-600 hover:text-blue-600 transition-colors">Admin</Link>
+          <nav className="hidden md:flex space-x-6 items-center">
+            {user && profile ? (
+              <>
+                <span className="text-gray-600">
+                  Welcome, {profile.first_name || profile.email}
+                </span>
+                <Link 
+                  to={getDashboardLink()} 
+                  className="text-gray-600 hover:text-blue-600 transition-colors"
+                >
+                  Dashboard
+                </Link>
+                <Button variant="outline" size="sm" onClick={handleSignOut}>
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Sign Out
+                </Button>
+              </>
+            ) : (
+              <>
+                <Link to="/auth" className="text-gray-600 hover:text-blue-600 transition-colors">Client Portal</Link>
+                <Link to="/auth" className="text-gray-600 hover:text-blue-600 transition-colors">Writer Portal</Link>
+                <Link to="/auth" className="text-gray-600 hover:text-blue-600 transition-colors">Admin</Link>
+              </>
+            )}
           </nav>
         </div>
       </header>
@@ -32,12 +72,20 @@ const Index = () => {
           Track progress, ensure quality, and deliver exceptional results.
         </p>
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Button asChild size="lg" className="bg-blue-600 hover:bg-blue-700">
-            <Link to="/client-signup">Post Assignment</Link>
-          </Button>
-          <Button asChild variant="outline" size="lg">
-            <Link to="/writer-signup">Join as Writer</Link>
-          </Button>
+          {user && profile ? (
+            <Button asChild size="lg" className="bg-blue-600 hover:bg-blue-700">
+              <Link to={getDashboardLink()}>Go to Dashboard</Link>
+            </Button>
+          ) : (
+            <>
+              <Button asChild size="lg" className="bg-blue-600 hover:bg-blue-700">
+                <Link to="/auth">Post Assignment</Link>
+              </Button>
+              <Button asChild variant="outline" size="lg">
+                <Link to="/auth">Join as Writer</Link>
+              </Button>
+            </>
+          )}
         </div>
       </section>
 

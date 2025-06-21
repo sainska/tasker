@@ -4,7 +4,10 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "@/contexts/AuthContext";
+import ProtectedRoute from "@/components/ProtectedRoute";
 import Index from "./pages/Index";
+import Auth from "./pages/Auth";
 import ClientDashboard from "./components/ClientDashboard";
 import WriterDashboard from "./components/WriterDashboard";
 import AdminDashboard from "./components/AdminDashboard";
@@ -17,16 +20,45 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/client-dashboard" element={<ClientDashboard />} />
-          <Route path="/writer-dashboard" element={<WriterDashboard />} />
-          <Route path="/admin-dashboard" element={<AdminDashboard />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/auth" element={<Auth />} />
+            <Route path="/client-login" element={<Auth />} />
+            <Route path="/writer-login" element={<Auth />} />
+            <Route path="/admin-login" element={<Auth />} />
+            <Route path="/client-signup" element={<Auth />} />
+            <Route path="/writer-signup" element={<Auth />} />
+            <Route 
+              path="/client-dashboard" 
+              element={
+                <ProtectedRoute allowedRoles={['client']}>
+                  <ClientDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/writer-dashboard" 
+              element={
+                <ProtectedRoute allowedRoles={['writer']}>
+                  <WriterDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="/admin-dashboard" 
+              element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <AdminDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );
