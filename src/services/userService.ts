@@ -1,8 +1,7 @@
 import { supabase } from '@/integrations/supabase/client';
-import { Database } from '@/integrations/supabase/types';
+import { Profile } from '@/types/auth';
 
-type Profile = Database['public']['Tables']['profiles']['Row'];
-type ProfileUpdate = Database['public']['Tables']['profiles']['Update'];
+type ProfileUpdate = Partial<Profile>;
 
 export class UserService {
   // Get user profile by ID

@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, FileText, DollarSign, TrendingUp, LogOut, Search, Filter, Eye, Download, MessageSquare } from "lucide-react";
+import { Users, FileText, DollarSign, TrendingUp, LogOut, Search, Filter, Eye, Download, MessageSquare, Settings } from "lucide-react";
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { AssignmentService } from '@/services/assignmentService';
@@ -17,7 +17,9 @@ type Assignment = Database['public']['Tables']['assignments']['Row'] & {
   writer?: { id: string; first_name?: string; last_name?: string; email: string };
 };
 
-type User = Database['public']['Tables']['profiles']['Row'];
+type User = Database['public']['Tables']['profiles']['Row'] & {
+  is_active?: boolean;
+};
 
 const AdminDashboard = () => {
   const { profile, signOut } = useAuth();
@@ -35,6 +37,13 @@ const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('all');
+
+  // Modal states
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [showAssignModal, setShowAssignModal] = useState(false);
+  const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const [showUserManagementModal, setShowUserManagementModal] = useState(false);
+  const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
 
   const fetchAssignments = async () => {
     try {
@@ -146,6 +155,31 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleMessageUser = (assignment?: Assignment) => {
+    setSelectedAssignment(assignment || null);
+    setShowMessageModal(true);
+  };
+
+  const handleAssignTask = (assignment: Assignment) => {
+    setSelectedAssignment(assignment);
+    setShowAssignModal(true);
+  };
+
+  const handleApproveTask = (assignment: Assignment) => {
+    setSelectedAssignment(assignment);
+    setShowApprovalModal(true);
+  };
+
+  const handleAssignmentUpdated = () => {
+    fetchAssignments();
+    fetchStats();
+  };
+
+  const handleUserUpdated = () => {
+    fetchUsers();
+    fetchStats();
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "completed": return "bg-green-100 text-green-800";
@@ -206,10 +240,20 @@ const AdminDashboard = () => {
               Welcome back, {profile?.first_name || 'Admin'}! System overview and management.
             </p>
           </div>
-          <Button variant="outline" onClick={handleSignOut}>
-            <LogOut className="h-4 w-4 mr-2" />
-            Sign Out
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setShowUserManagementModal(true)}>
+              <Users className="h-4 w-4 mr-2" />
+              Manage Users
+            </Button>
+            <Button variant="outline" onClick={() => setShowMessageModal(true)}>
+              <MessageSquare className="h-4 w-4 mr-2" />
+              Send Message
+            </Button>
+            <Button variant="outline" onClick={handleSignOut}>
+              <LogOut className="h-4 w-4 mr-2" />
+              Sign Out
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -346,10 +390,37 @@ const AdminDashboard = () => {
                       <span>Budget: ${assignment.budget}</span>
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline">
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => handleMessageUser(assignment)}
+                      >
                         <MessageSquare className="h-4 w-4 mr-1" />
                         Message
                       </Button>
+                      
+                      {!assignment.writer_id && (
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleAssignTask(assignment)}
+                        >
+                          <Settings className="h-4 w-4 mr-1" />
+                          Assign Writer
+                        </Button>
+                      )}
+                      
+                      {assignment.status === 'submitted' && (
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleApproveTask(assignment)}
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          Review & Approve
+                        </Button>
+                      )}
+                      
                       {assignment.status === 'submitted' && (
                         <>
                           <Button 
@@ -418,7 +489,7 @@ const AdminDashboard = () => {
                     <div className="grid grid-cols-3 gap-4 mb-4 text-sm text-gray-600">
                       <span>Email: {user.email}</span>
                       <span>Joined: {formatDate(user.created_at)}</span>
-                      <span>Status: {user.is_active ? 'Active' : 'Inactive'}</span>
+                      <span>Status: {(user as any).is_active ? 'Active' : 'Inactive'}</span>
                     </div>
                     <div className="flex gap-2">
                       <Button size="sm" variant="outline">
@@ -445,6 +516,101 @@ const AdminDashboard = () => {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Modals */}
+      {showMessageModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Send Message</h3>
+            <p className="text-gray-600 mb-4">
+              {selectedAssignment 
+                ? `Send message regarding assignment: ${selectedAssignment.title}`
+                : 'Send a general message to users'
+              }
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowMessageModal(false)}>
+                Cancel
+              </Button>
+              <Button onClick={() => setShowMessageModal(false)}>
+                Send
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAssignModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Assign Task</h3>
+            <p className="text-gray-600 mb-4">
+              {selectedAssignment && `Assign "${selectedAssignment.title}" to a writer`}
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowAssignModal(false)}>
+                Cancel
+              </Button>
+              <Button onClick={() => setShowAssignModal(false)}>
+                Assign
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showApprovalModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Review & Approve</h3>
+            <p className="text-gray-600 mb-4">
+              {selectedAssignment && `Review submission for: ${selectedAssignment.title}`}
+            </p>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowApprovalModal(false)}>
+                Cancel
+              </Button>
+              <Button onClick={() => setShowApprovalModal(false)}>
+                Approve
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showUserManagementModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4">User Management</h3>
+            <div className="space-y-4">
+              {users.map((user) => (
+                <div key={user.id} className="flex items-center justify-between p-3 border rounded">
+                  <div>
+                    <h4 className="font-medium">{user.first_name} {user.last_name}</h4>
+                    <p className="text-sm text-gray-600">{user.email} - {user.role}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline">
+                      Message
+                    </Button>
+                    <Button size="sm" variant="outline">
+                      {(user as any).is_active ? 'Deactivate' : 'Activate'}
+                    </Button>
+                    <Button size="sm" variant="destructive">
+                      Delete
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 mt-4">
+              <Button variant="outline" onClick={() => setShowUserManagementModal(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

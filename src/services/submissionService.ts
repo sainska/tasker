@@ -162,4 +162,29 @@ export class SubmissionService {
       throw error;
     }
   }
+
+  // Get submission by assignment ID
+  static async getSubmissionByAssignmentId(assignmentId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('assignment_submissions')
+        .select(`
+          *,
+          writer:profiles!assignment_submissions_writer_id_fkey(id, first_name, last_name, email),
+          assignment:assignments!assignment_submissions_assignment_id_fkey(id, title, description)
+        `)
+        .eq('assignment_id', assignmentId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching submission by assignment ID:', error);
+        throw error;
+      }
+
+      return data;
+    } catch (error) {
+      console.error('SubmissionService.getSubmissionByAssignmentId error:', error);
+      throw error;
+    }
+  }
 } 
