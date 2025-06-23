@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navigate, useSearchParams, useNavigate } from 'react-router-dom';
@@ -8,7 +9,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { FileText, AlertCircle, Mail, Lock, CheckCircle } from 'lucide-react';
-import { toast } from '@/components/ui/use-toast';
+import { ErrorHandler } from '@/utils/errorHandler';
+import LoadingSpinner from '@/components/LoadingSpinner';
 
 const Auth = () => {
   const { user, profile, signIn, signUp, resetPassword, loading, getDashboardUrl } = useAuth();
@@ -55,24 +57,24 @@ const Auth = () => {
     setIsLoading(true);
     setError('');
 
-    const { error } = await signIn(loginEmail, loginPassword);
-    
-    if (error) {
-      setError(error.message);
-      toast({
-        title: "Login Failed",
-        description: error.message,
-        variant: "destructive"
-      });
-    } else {
-      toast({
-        title: "Success",
-        description: "Successfully logged in!"
-      });
-      // Navigation will be handled by useEffect
+    try {
+      const { error } = await signIn(loginEmail, loginPassword);
+      
+      if (error) {
+        const errorMessage = ErrorHandler.handleAuthError(error);
+        setError(errorMessage);
+        ErrorHandler.showAuthError(error);
+      } else {
+        ErrorHandler.showSuccess('Successfully logged in!');
+        // Navigation will be handled by useEffect
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      setError('An unexpected error occurred');
+      ErrorHandler.showAuthError(error);
+    } finally {
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
   };
 
   const handleSignup = async (e: React.FormEvent) => {
@@ -80,34 +82,31 @@ const Auth = () => {
     setIsLoading(true);
     setError('');
 
-    const { error, needsConfirmation } = await signUp(signupEmail, signupPassword, firstName, lastName, role);
-    
-    if (error) {
-      setError(error.message);
-      toast({
-        title: "Signup Failed",
-        description: error.message,
-        variant: "destructive"
-      });
-    } else {
-      if (needsConfirmation) {
-        setNeedsEmailConfirmation(true);
-        setSuccessMessage('Account created successfully! Please check your email to verify your account.');
-        toast({
-          title: "Success",
-          description: "Account created successfully! Please check your email to verify your account."
-        });
+    try {
+      const { error, needsConfirmation } = await signUp(signupEmail, signupPassword, firstName, lastName, role);
+      
+      if (error) {
+        const errorMessage = ErrorHandler.handleAuthError(error);
+        setError(errorMessage);
+        ErrorHandler.showAuthError(error);
       } else {
-        setSuccessMessage('Account created successfully! Redirecting to dashboard...');
-        toast({
-          title: "Success",
-          description: "Account created successfully! Redirecting to dashboard..."
-        });
-        // Navigation will be handled by useEffect
+        if (needsConfirmation) {
+          setNeedsEmailConfirmation(true);
+          setSuccessMessage('Account created successfully! Please check your email to verify your account.');
+          ErrorHandler.showSuccess('Account created successfully! Please check your email to verify your account.');
+        } else {
+          setSuccessMessage('Account created successfully! Redirecting to dashboard...');
+          ErrorHandler.showSuccess('Account created successfully! Redirecting to dashboard...');
+          // Navigation will be handled by useEffect
+        }
       }
+    } catch (error) {
+      console.error('Signup error:', error);
+      setError('An unexpected error occurred');
+      ErrorHandler.showAuthError(error);
+    } finally {
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
   };
 
   const handlePasswordReset = async (e: React.FormEvent) => {
@@ -115,31 +114,31 @@ const Auth = () => {
     setIsLoading(true);
     setError('');
 
-    const { error } = await resetPassword(resetEmail);
-    
-    if (error) {
-      setError(error.message);
-      toast({
-        title: "Password Reset Failed",
-        description: error.message,
-        variant: "destructive"
-      });
-    } else {
-      setSuccessMessage('Password reset email sent! Please check your inbox.');
-      toast({
-        title: "Success",
-        description: "Password reset email sent! Please check your inbox."
-      });
-      setShowResetForm(false);
+    try {
+      const { error } = await resetPassword(resetEmail);
+      
+      if (error) {
+        const errorMessage = ErrorHandler.handleAuthError(error);
+        setError(errorMessage);
+        ErrorHandler.showAuthError(error);
+      } else {
+        setSuccessMessage('Password reset email sent! Please check your inbox.');
+        ErrorHandler.showSuccess('Password reset email sent! Please check your inbox.');
+        setShowResetForm(false);
+      }
+    } catch (error) {
+      console.error('Password reset error:', error);
+      setError('An unexpected error occurred');
+      ErrorHandler.showAuthError(error);
+    } finally {
+      setIsLoading(false);
     }
-    
-    setIsLoading(false);
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100">
+        <LoadingSpinner size="lg" text="Loading..." />
       </div>
     );
   }
@@ -173,6 +172,7 @@ const Auth = () => {
                 setSuccessMessage('');
               }}
               className="w-full"
+              disabled={isLoading}
             >
               Back to Login
             </Button>
@@ -206,6 +206,7 @@ const Auth = () => {
                   placeholder="Enter your email"
                   value={resetEmail}
                   onChange={(e) => setResetEmail(e.target.value)}
+                  disabled={isLoading}
                   required
                 />
               </div>
@@ -225,7 +226,7 @@ const Auth = () => {
                 <Button 
                   type="submit" 
                   className="flex-1" 
-                  disabled={isLoading}
+                  disabled={isLoading || !resetEmail.trim()}
                 >
                   {isLoading ? "Sending..." : "Send Reset Link"}
                 </Button>
@@ -233,6 +234,7 @@ const Auth = () => {
                   type="button" 
                   variant="outline"
                   onClick={() => setShowResetForm(false)}
+                  disabled={isLoading}
                 >
                   Back to Login
                 </Button>
@@ -260,8 +262,8 @@ const Auth = () => {
         <CardContent>
           <Tabs defaultValue="login" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="login">Login</TabsTrigger>
-              <TabsTrigger value="signup">Sign Up</TabsTrigger>
+              <TabsTrigger value="login" disabled={isLoading}>Login</TabsTrigger>
+              <TabsTrigger value="signup" disabled={isLoading}>Sign Up</TabsTrigger>
             </TabsList>
             
             <TabsContent value="login">
@@ -274,6 +276,7 @@ const Auth = () => {
                     placeholder="Enter your email"
                     value={loginEmail}
                     onChange={(e) => setLoginEmail(e.target.value)}
+                    disabled={isLoading}
                     required
                   />
                 </div>
@@ -285,6 +288,7 @@ const Auth = () => {
                     placeholder="Enter your password"
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
+                    disabled={isLoading}
                     required
                   />
                 </div>
@@ -294,6 +298,7 @@ const Auth = () => {
                     variant="link" 
                     className="text-sm"
                     onClick={() => setShowResetForm(true)}
+                    disabled={isLoading}
                   >
                     Forgot password?
                   </Button>
@@ -307,9 +312,16 @@ const Auth = () => {
                 <Button 
                   type="submit" 
                   className="w-full" 
-                  disabled={isLoading}
+                  disabled={isLoading || !loginEmail.trim() || !loginPassword.trim()}
                 >
-                  {isLoading ? "Signing in..." : "Sign In"}
+                  {isLoading ? (
+                    <div className="flex items-center space-x-2">
+                      <LoadingSpinner size="sm" />
+                      <span>Signing in...</span>
+                    </div>
+                  ) : (
+                    "Sign In"
+                  )}
                 </Button>
               </form>
             </TabsContent>
@@ -324,6 +336,7 @@ const Auth = () => {
                       placeholder="First name"
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
+                      disabled={isLoading}
                     />
                   </div>
                   <div className="space-y-2">
@@ -333,12 +346,17 @@ const Auth = () => {
                       placeholder="Last name"
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
+                      disabled={isLoading}
                     />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="role">Role</Label>
-                  <Select value={role} onValueChange={(value: 'client' | 'writer' | 'admin') => setRole(value)}>
+                  <Select 
+                    value={role} 
+                    onValueChange={(value: 'client' | 'writer' | 'admin') => setRole(value)}
+                    disabled={isLoading}
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Select your role" />
                     </SelectTrigger>
@@ -357,6 +375,7 @@ const Auth = () => {
                     placeholder="Enter your email"
                     value={signupEmail}
                     onChange={(e) => setSignupEmail(e.target.value)}
+                    disabled={isLoading}
                     required
                   />
                 </div>
@@ -368,6 +387,7 @@ const Auth = () => {
                     placeholder="Create a password"
                     value={signupPassword}
                     onChange={(e) => setSignupPassword(e.target.value)}
+                    disabled={isLoading}
                     required
                   />
                 </div>
@@ -386,9 +406,16 @@ const Auth = () => {
                 <Button 
                   type="submit" 
                   className="w-full" 
-                  disabled={isLoading}
+                  disabled={isLoading || !signupEmail.trim() || !signupPassword.trim()}
                 >
-                  {isLoading ? "Creating account..." : "Create Account"}
+                  {isLoading ? (
+                    <div className="flex items-center space-x-2">
+                      <LoadingSpinner size="sm" />
+                      <span>Creating account...</span>
+                    </div>
+                  ) : (
+                    "Create Account"
+                  )}
                 </Button>
               </form>
             </TabsContent>

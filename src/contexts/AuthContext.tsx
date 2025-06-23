@@ -3,6 +3,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { AuthContextType, Profile } from '@/types/auth';
 import { User, Session } from '@supabase/supabase-js';
+import { AuthService } from '@/services/authService';
+import { UserService } from '@/services/userService';
 
 type ProfileType = Profile;
 
@@ -26,67 +28,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       console.log('Fetching profile for user:', userId);
       
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (error) {
-        console.error('Error fetching profile:', error);
-        
-        // Only try to create profile if it doesn't exist
-        if (error.code === 'PGRST116' || error.message?.includes('No rows found')) {
-          console.log('Profile not found, creating one...');
-          const newProfile = await createProfileManually(userId);
+      const profileData = await UserService.getUserById(userId);
+      console.log('Profile fetched successfully:', profileData);
+      return profileData;
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+      
+      // Try to create profile if it doesn't exist
+      try {
+        const session = await AuthService.getCurrentSession();
+        if (session?.user) {
+          const newProfile = await createProfileFromUser(session.user);
           return newProfile;
         }
-        
-        return null;
+      } catch (createError) {
+        console.error('Error creating profile:', createError);
       }
       
-      console.log('Profile fetched successfully:', data);
-      return data;
-    } catch (error) {
-      console.error('Error in fetchProfile:', error);
       return null;
     }
   };
 
-  const createProfileManually = async (userId: string): Promise<ProfileType | null> => {
+  const createProfileFromUser = async (user: User): Promise<ProfileType | null> => {
     try {
-      console.log('Creating profile for user:', userId);
+      console.log('Creating profile for user:', user.id);
       
-      // Get user data from auth
-      const { data: userData, error: userError } = await supabase.auth.getUser();
-      
-      if (userError || !userData.user) {
-        console.error('Error getting user data:', userError);
-        return null;
-      }
+      const profileData = await UserService.createUser({
+        email: user.email || '',
+        first_name: user.user_metadata?.first_name || '',
+        last_name: user.user_metadata?.last_name || '',
+        role: user.user_metadata?.role || 'client'
+      });
 
-      const user = userData.user;
-      const { data, error } = await supabase
-        .from('profiles')
-        .insert({
-          id: userId,
-          email: user.email || '',
-          first_name: user.user_metadata?.first_name || '',
-          last_name: user.user_metadata?.last_name || '',
-          role: user.user_metadata?.role || 'client'
-        })
-        .select()
-        .single();
-
-      if (error) {
-        console.error('Error creating profile:', error);
-        return null;
-      }
-
-      console.log('Profile created successfully:', data);
-      return data;
+      console.log('Profile created successfully:', profileData);
+      return profileData;
     } catch (error) {
-      console.error('Error in createProfileManually:', error);
+      console.error('Error creating profile:', error);
       return null;
     }
   };
@@ -105,25 +82,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // Fetch profile data
-          const profileData = await fetchProfile(session.user.id);
-          if (mounted) {
-            setProfile(profileData);
-          }
+          // Defer profile fetching to avoid deadlocks
+          setTimeout(async () => {
+            if (mounted) {
+              const profileData = await fetchProfile(session.user.id);
+              if (mounted) {
+                setProfile(profileData);
+                setLoading(false);
+              }
+            }
+          }, 0);
         } else {
           if (mounted) {
             setProfile(null);
+            setLoading(false);
           }
-        }
-        
-        if (mounted) {
-          setLoading(false);
         }
       }
     );
 
     // Check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    AuthService.getCurrentSession().then((session) => {
       if (!mounted) return;
       
       console.log('Initial session check:', session?.user?.id);
@@ -157,71 +136,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     lastName?: string, 
     role: 'client' | 'writer' | 'admin' = 'client'
   ) => {
-    try {
-      console.log('Attempting signup with:', { email, firstName, lastName, role });
-      
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            first_name: firstName || '',
-            last_name: lastName || '',
-            role: role
-          }
-        }
-      });
-      
-      if (error) {
-        console.error('Signup error:', error);
-        return { error };
-      }
-      
-      console.log('Signup successful:', data);
-      
-      // If user needs email confirmation
-      if (data.user && !data.user.email_confirmed_at) {
-        console.log('User needs email confirmation');
-        return { error: null, data, needsConfirmation: true };
-      }
-      
-      return { error: null, data };
-    } catch (error) {
-      console.error('Signup exception:', error);
-      return { error };
-    }
+    return await AuthService.signUp(email, password, firstName, lastName, role);
   };
 
   const signIn = async (email: string, password: string) => {
-    try {
-      console.log('Attempting signin with:', { email });
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      
-      if (error) {
-        console.error('Signin error:', error);
-        return { error };
-      }
-      
-      console.log('Signin successful:', data);
-      return { error: null, data };
-    } catch (error) {
-      console.error('Signin exception:', error);
-      return { error };
-    }
+    return await AuthService.signIn(email, password);
   };
 
   const signOut = async () => {
-    try {
-      console.log('Signing out...');
-      await supabase.auth.signOut();
-      setProfile(null);
-      console.log('Signout successful');
-    } catch (error) {
-      console.error('Signout error:', error);
-    }
+    await AuthService.signOut();
+    setProfile(null);
   };
 
   const updateProfile = async (updates: Partial<ProfileType>) => {
@@ -229,44 +153,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       console.log('Updating profile:', updates);
-      const { error } = await supabase
-        .from('profiles')
-        .update(updates)
-        .eq('id', user.id);
-
-      if (!error) {
-        const updatedProfile = await fetchProfile(user.id);
-        setProfile(updatedProfile);
-        console.log('Profile updated successfully');
-      } else {
-        console.error('Profile update error:', error);
-      }
-
-      return { error };
+      const updatedProfile = await UserService.updateUser(user.id, updates);
+      setProfile(updatedProfile);
+      console.log('Profile updated successfully');
+      return { error: null };
     } catch (error) {
-      console.error('Profile update exception:', error);
+      console.error('Profile update error:', error);
       return { error };
     }
   };
 
   const resetPassword = async (email: string) => {
-    try {
-      console.log('Resetting password for:', email);
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/auth?reset=true`
-      });
-      
-      if (error) {
-        console.error('Password reset error:', error);
-        return { error };
-      }
-      
-      console.log('Password reset email sent');
-      return { error: null };
-    } catch (error) {
-      console.error('Password reset exception:', error);
-      return { error };
-    }
+    return await AuthService.resetPassword(email);
   };
 
   const getDashboardUrl = () => {

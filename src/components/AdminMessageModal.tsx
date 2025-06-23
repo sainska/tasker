@@ -4,9 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
-import { toast } from '@/components/ui/use-toast';
 import { MessageService } from '@/services/messageService';
 import { useAuth } from '@/contexts/AuthContext';
+import { ErrorHandler } from '@/utils/errorHandler';
 
 interface AdminMessageModalProps {
   isOpen: boolean;
@@ -22,12 +22,13 @@ const AdminMessageModal = ({ isOpen, onClose, assignmentId, recipientId, onMessa
   const [loading, setLoading] = useState(false);
 
   const handleSendMessage = async () => {
-    if (!message.trim() || !profile || !recipientId) {
-      toast({
-        title: "Error",
-        description: "Please enter a message",
-        variant: "destructive"
-      });
+    if (!message.trim()) {
+      ErrorHandler.showError(new Error('Please enter a message'), 'Validation Error');
+      return;
+    }
+
+    if (!profile || !recipientId) {
+      ErrorHandler.showError(new Error('Missing required information'), 'Error');
       return;
     }
 
@@ -41,28 +42,28 @@ const AdminMessageModal = ({ isOpen, onClose, assignmentId, recipientId, onMessa
         is_read: false
       });
 
-      toast({
-        title: "Success",
-        description: "Message sent successfully"
-      });
+      ErrorHandler.showSuccess('Message sent successfully');
       
       setMessage('');
       onMessageSent();
       onClose();
     } catch (error) {
       console.error('Error sending message:', error);
-      toast({
-        title: "Error",
-        description: "Failed to send message",
-        variant: "destructive"
-      });
+      ErrorHandler.showError(error, 'Failed to send message');
     } finally {
       setLoading(false);
     }
   };
 
+  const handleClose = () => {
+    if (!loading) {
+      setMessage('');
+      onClose();
+    }
+  };
+
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Send Message</DialogTitle>
@@ -81,15 +82,19 @@ const AdminMessageModal = ({ isOpen, onClose, assignmentId, recipientId, onMessa
               onChange={(e) => setMessage(e.target.value)}
               className="mt-2"
               rows={4}
+              disabled={loading}
             />
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={loading}>
+          <Button variant="outline" onClick={handleClose} disabled={loading}>
             Cancel
           </Button>
-          <Button onClick={handleSendMessage} disabled={loading || !message.trim()}>
+          <Button 
+            onClick={handleSendMessage} 
+            disabled={loading || !message.trim()}
+          >
             {loading ? 'Sending...' : 'Send Message'}
           </Button>
         </DialogFooter>
