@@ -7,6 +7,8 @@ export class UserService {
   // Get user profile by ID
   static async getUserProfile(userId: string) {
     try {
+      console.log('UserService: Fetching profile for user:', userId);
+      
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -14,10 +16,11 @@ export class UserService {
         .single();
 
       if (error) {
-        console.error('Error fetching user profile:', error);
+        console.error('UserService: Error fetching user profile:', error);
         throw error;
       }
 
+      console.log('UserService: Profile fetched successfully:', data);
       return data;
     } catch (error) {
       console.error('UserService.getUserProfile error:', error);
@@ -28,6 +31,8 @@ export class UserService {
   // Update user profile
   static async updateUserProfile(userId: string, updates: ProfileUpdate) {
     try {
+      console.log('UserService: Updating profile for user:', userId, updates);
+      
       const { data, error } = await supabase
         .from('profiles')
         .update(updates)
@@ -36,10 +41,11 @@ export class UserService {
         .single();
 
       if (error) {
-        console.error('Error updating user profile:', error);
+        console.error('UserService: Error updating user profile:', error);
         throw error;
       }
 
+      console.log('UserService: Profile updated successfully:', data);
       return data;
     } catch (error) {
       console.error('UserService.updateUserProfile error:', error);
@@ -278,4 +284,4 @@ export class UserService {
       throw error;
     }
   }
-} 
+}

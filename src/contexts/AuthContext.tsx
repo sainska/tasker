@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { AuthContextType, Profile } from '@/types/auth';
@@ -20,20 +21,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<ProfileType | null>(null);
   const [loading, setLoading] = useState(true);
-  
-  // Simple cache to prevent redundant fetches
-  const profileCache = new Map<string, { profile: ProfileType; timestamp: number }>();
-  const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
   const fetchProfile = async (userId: string): Promise<ProfileType | null> => {
     try {
-      // Check cache first
-      const cached = profileCache.get(userId);
-      if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-        console.log('Using cached profile for user:', userId);
-        return cached.profile;
-      }
-
       console.log('Fetching profile for user:', userId);
       
       const { data, error } = await supabase
@@ -49,9 +39,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (error.code === 'PGRST116' || error.message?.includes('No rows found')) {
           console.log('Profile not found, creating one...');
           const newProfile = await createProfileManually(userId);
-          if (newProfile) {
-            profileCache.set(userId, { profile: newProfile, timestamp: Date.now() });
-          }
           return newProfile;
         }
         
@@ -59,9 +46,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       console.log('Profile fetched successfully:', data);
-      
-      // Cache the result
-      profileCache.set(userId, { profile: data, timestamp: Date.now() });
       return data;
     } catch (error) {
       console.error('Error in fetchProfile:', error);
@@ -107,21 +91,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const clearProfileCache = (userId?: string) => {
-    if (userId) {
-      profileCache.delete(userId);
-    } else {
-      profileCache.clear();
-    }
-  };
-
   useEffect(() => {
     let mounted = true;
 
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state changed:', event, session);
+        console.log('Auth state changed:', event, session?.user?.id);
         
         if (!mounted) return;
         
@@ -137,7 +113,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } else {
           if (mounted) {
             setProfile(null);
-            clearProfileCache(); // Clear cache on logout
           }
         }
         
@@ -151,6 +126,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!mounted) return;
       
+      console.log('Initial session check:', session?.user?.id);
       setSession(session);
       setUser(session?.user ?? null);
       
@@ -203,16 +179,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       console.log('Signup successful:', data);
       
-      // If user is confirmed immediately, fetch profile
+      // If user needs email confirmation
       if (data.user && !data.user.email_confirmed_at) {
         console.log('User needs email confirmation');
         return { error: null, data, needsConfirmation: true };
-      }
-      
-      // If user is already confirmed, fetch profile
-      if (data.user) {
-        const profileData = await fetchProfile(data.user.id);
-        setProfile(profileData);
       }
       
       return { error: null, data };
@@ -236,13 +206,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       
       console.log('Signin successful:', data);
-      
-      // Fetch profile after successful signin
-      if (data.user) {
-        const profileData = await fetchProfile(data.user.id);
-        setProfile(profileData);
-      }
-      
       return { error: null, data };
     } catch (error) {
       console.error('Signin exception:', error);
@@ -255,7 +218,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.log('Signing out...');
       await supabase.auth.signOut();
       setProfile(null);
-      clearProfileCache(); // Clear cache on logout
       console.log('Signout successful');
     } catch (error) {
       console.error('Signout error:', error);
@@ -273,8 +235,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .eq('id', user.id);
 
       if (!error) {
-        // Clear cache for this user to ensure fresh data
-        clearProfileCache(user.id);
         const updatedProfile = await fetchProfile(user.id);
         setProfile(updatedProfile);
         console.log('Profile updated successfully');
@@ -314,11 +274,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     switch (profile.role) {
       case 'admin':
-        return '/admin';
+        return '/admin-dashboard';
       case 'client':
-        return '/client';
+        return '/client-dashboard';
       case 'writer':
-        return '/writer';
+        return '/writer-dashboard';
       default:
         return '/';
     }
