@@ -1,29 +1,19 @@
-import React, { useState, useEffect, ReactNode } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { AssignmentService } from '@/services/assignmentService';
-import { SubmissionService } from '@/services/submissionService';
+
+import React, { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { FileText, Download } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
-// @ts-expect-error: Database type is not exported from supabase/types
-import type { Database } from '@/integrations/supabase/types';
-import { Eye, Download, CheckCircle, XCircle } from 'lucide-react';
+import { SubmissionService } from '@/services/submissionService';
+import { AssignmentService } from '@/services/assignmentService';
+import { Database } from '@/integrations/supabase/types';
 
-type Assignment = {
-  id: string;
-  title?: string;
-  description?: string;
-  budget?: number;
-  deadline?: string;
-  status?: string;
-  subject?: string;
-  client?: { id: string; first_name?: string; last_name?: string; email: string };
-  writer?: { id: string; first_name?: string; last_name?: string; email: string };
-};
-
-type Submission = Database['public']['Tables']['assignment_submissions']['Row'];
+type Assignment = Database['public']['Tables']['assignments']['Row'];
+type Submission = Database['public']['Tables']['submissions']['Row'];
 
 interface AdminApprovalModalProps {
   isOpen: boolean;
@@ -32,127 +22,55 @@ interface AdminApprovalModalProps {
   onApprovalComplete: () => void;
 }
 
-const AdminApprovalModal: React.FC<AdminApprovalModalProps> = ({
-  isOpen,
-  onClose,
-  assignment,
-  onApprovalComplete
-}) => {
+const AdminApprovalModal = ({ isOpen, onClose, assignment, onApprovalComplete }: AdminApprovalModalProps) => {
   const [submission, setSubmission] = useState<Submission | null>(null);
-  const [adminNotes, setAdminNotes] = useState<string>('');
+  const [adminNotes, setAdminNotes] = useState('');
   const [loading, setLoading] = useState(false);
-  const [loadingSubmission, setLoadingSubmission] = useState(false);
 
-  useEffect(() => {
-    if (isOpen && assignment) {
+  React.useEffect(() => {
+    if (assignment && isOpen) {
       fetchSubmission();
     }
-  }, [isOpen, assignment]);
+  }, [assignment, isOpen]);
 
   const fetchSubmission = async () => {
     if (!assignment) return;
     
-    setLoadingSubmission(true);
     try {
-      const data = await SubmissionService.getSubmissionByAssignmentId(assignment.id);
-      setSubmission(data);
+      const submissionData = await SubmissionService.getSubmissionByAssignment(assignment.id);
+      setSubmission(submissionData);
     } catch (error) {
       console.error('Error fetching submission:', error);
       toast({
         title: "Error",
-        description: "Failed to load submission",
-        variant: "destructive"
-      });
-    } finally {
-      setLoadingSubmission(false);
-    }
-  };
-
-  const handleViewSubmission = async () => {
-    if (!submission?.file_url) {
-      toast({
-        title: "No File",
-        description: "No file attached to this submission",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    try {
-      window.open(submission.file_url, '_blank');
-    } catch (error) {
-      console.error('Error viewing submission:', error);
-      toast({
-        title: "Error",
-        description: "Failed to view submission",
-        variant: "destructive"
-      });
-    }
-  };
-
-  const handleDownloadSubmission = async () => {
-    if (!submission?.file_url) {
-      toast({
-        title: "No File",
-        description: "No file attached to this submission",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    try {
-      const link = document.createElement('a');
-      link.href = submission.file_url;
-      link.download = `submission-${submission.id}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      toast({
-        title: "Success",
-        description: "File download started"
-      });
-    } catch (error) {
-      console.error('Error downloading submission:', error);
-      toast({
-        title: "Error",
-        description: "Failed to download file",
+        description: "Failed to fetch submission details",
         variant: "destructive"
       });
     }
   };
 
   const handleApprove = async () => {
-    if (!assignment) return;
-
+    if (!assignment || !submission) return;
+    
     setLoading(true);
     try {
-      // Update assignment status to approved
+      // Update assignment status to completed
       await AssignmentService.updateAssignment(assignment.id, {
-        status: 'approved',
-        admin_notes: adminNotes || null
+        status: 'completed'
       });
-
-      // Update submission status
-      if (submission) {
-        await SubmissionService.updateSubmission(submission.id, {
-          status: 'approved',
-          admin_notes: adminNotes || null
-        });
-      }
 
       toast({
         title: "Success",
-        description: "Task approved successfully"
+        description: "Assignment approved and marked as completed"
       });
-
+      
       onApprovalComplete();
-      handleClose();
+      onClose();
     } catch (error) {
-      console.error('Error approving task:', error);
+      console.error('Error approving assignment:', error);
       toast({
         title: "Error",
-        description: "Failed to approve task",
+        description: "Failed to approve assignment",
         variant: "destructive"
       });
     } finally {
@@ -160,37 +78,36 @@ const AdminApprovalModal: React.FC<AdminApprovalModalProps> = ({
     }
   };
 
-  const handleReject = async () => {
-    if (!assignment) return;
-
+  const handleRequestRevision = async () => {
+    if (!assignment || !adminNotes.trim()) {
+      toast({
+        title: "Error",
+        description: "Please provide revision notes",
+        variant: "destructive"
+      });
+      return;
+    }
+    
     setLoading(true);
     try {
       // Update assignment status to revision requested
       await AssignmentService.updateAssignment(assignment.id, {
         status: 'revision_requested',
-        admin_notes: adminNotes || null
+        admin_notes: adminNotes
       });
-
-      // Update submission status
-      if (submission) {
-        await SubmissionService.updateSubmission(submission.id, {
-          status: 'revision_requested',
-          admin_notes: adminNotes || null
-        });
-      }
 
       toast({
         title: "Success",
-        description: "Task rejected and sent for revision"
+        description: "Revision requested successfully"
       });
-
+      
       onApprovalComplete();
-      handleClose();
+      onClose();
     } catch (error) {
-      console.error('Error rejecting task:', error);
+      console.error('Error requesting revision:', error);
       toast({
         title: "Error",
-        description: "Failed to reject task",
+        description: "Failed to request revision",
         variant: "destructive"
       });
     } finally {
@@ -198,115 +115,166 @@ const AdminApprovalModal: React.FC<AdminApprovalModalProps> = ({
     }
   };
 
-  const handleClose = () => {
-    setSubmission(null);
-    setAdminNotes('');
-    onClose();
+  const getStatusBadge = (status: string) => {
+    const statusColors = {
+      pending: 'bg-yellow-100 text-yellow-800',
+      assigned: 'bg-blue-100 text-blue-800',
+      in_progress: 'bg-purple-100 text-purple-800',
+      submitted: 'bg-orange-100 text-orange-800',
+      revision_requested: 'bg-red-100 text-red-800',
+      completed: 'bg-green-100 text-green-800',
+      cancelled: 'bg-gray-100 text-gray-800'
+    };
+    
+    return (
+      <Badge className={statusColors[status as keyof typeof statusColors] || 'bg-gray-100 text-gray-800'}>
+        {status.replace('_', ' ').toUpperCase()}
+      </Badge>
+    );
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
   };
 
   if (!assignment) return null;
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[700px]">
+    <Dialog open={isOpen} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Review and Approve Submission</DialogTitle>
+          <DialogTitle>Review Assignment Submission</DialogTitle>
+          <DialogDescription>
+            Review the submitted work and approve or request revisions
+          </DialogDescription>
         </DialogHeader>
-        
+
         <div className="space-y-6">
           {/* Assignment Details */}
-          <div className="p-4 bg-gray-50 rounded-lg">
-            <h3 className="font-semibold text-lg mb-2">{assignment.title}</h3>
-            <p className="text-sm text-gray-600 mb-3">{assignment.description}</p>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                Assignment Details
+                {getStatusBadge(assignment.status)}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
               <div>
-                <span className="font-medium">Subject:</span> {assignment.subject}
+                <Label className="font-medium">Title</Label>
+                <p className="text-sm text-gray-600">{assignment.title}</p>
               </div>
               <div>
-                <span className="font-medium">Budget:</span> ${assignment.budget}
+                <Label className="font-medium">Description</Label>
+                <p className="text-sm text-gray-600">{assignment.description}</p>
               </div>
-              <div>
-                <span className="font-medium">Client:</span> {assignment.client ? `${assignment.client.first_name} ${assignment.client.last_name}` : 'Unknown'}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="font-medium">Budget</Label>
+                  <p className="text-sm text-gray-600">${assignment.budget}</p>
+                </div>
+                <div>
+                  <Label className="font-medium">Due Date</Label>
+                  <p className="text-sm text-gray-600">
+                    {assignment.due_date ? formatDate(assignment.due_date) : 'Not set'}
+                  </p>
+                </div>
               </div>
-              <div>
-                <span className="font-medium">Writer:</span> {assignment.writer ? `${assignment.writer.first_name} ${assignment.writer.last_name}` : 'Unassigned'}
-              </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
           {/* Submission Details */}
-          {loadingSubmission ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="mt-2 text-sm text-gray-600">Loading submission...</p>
-            </div>
-          ) : submission ? (
-            <div className="p-4 border rounded-lg">
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="font-medium">Submission Details</h4>
-                <Badge variant={submission.status === 'pending' ? 'secondary' : 'default'}>
-                  {submission.status}
-                </Badge>
-              </div>
-              
-              <div className="space-y-2 text-sm">
-                <p><span className="font-medium">Submitted:</span> {new Date(submission.created_at).toLocaleString()}</p>
-                {submission.submitted_at && (
-                  <p><span className="font-medium">Submitted At:</span> {new Date(submission.submitted_at).toLocaleString()}</p>
+          {submission && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Submitted Work</CardTitle>
+                <CardDescription>
+                  Submitted on {formatDate(submission.submitted_at || submission.created_at)}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label className="font-medium">Content</Label>
+                  <div className="mt-2 p-3 bg-gray-50 rounded-md">
+                    <p className="text-sm whitespace-pre-wrap">{submission.content}</p>
+                  </div>
+                </div>
+                
+                {submission.submission_notes && (
+                  <div>
+                    <Label className="font-medium">Writer's Notes</Label>
+                    <div className="mt-2 p-3 bg-gray-50 rounded-md">
+                      <p className="text-sm whitespace-pre-wrap">{submission.submission_notes}</p>
+                    </div>
+                  </div>
                 )}
-                {submission.notes && (
-                  <p><span className="font-medium">Writer Notes:</span> {submission.notes}</p>
-                )}
-              </div>
 
-              <div className="flex gap-2 mt-4">
-                <Button size="sm" variant="outline" onClick={handleViewSubmission}>
-                  <Eye className="h-4 w-4 mr-1" />
-                  View File
-                </Button>
-                <Button size="sm" variant="outline" onClick={handleDownloadSubmission}>
-                  <Download className="h-4 w-4 mr-1" />
-                  Download
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              No submission found for this assignment
-            </div>
+                {submission.file_url && (
+                  <div>
+                    <Label className="font-medium">Attached File</Label>
+                    <div className="mt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open(submission.file_url, '_blank')}
+                        className="flex items-center gap-2"
+                      >
+                        <FileText className="h-4 w-4" />
+                        View File
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           )}
 
-          {/* Admin Notes */}
-          <div className="space-y-2">
-            <Label htmlFor="adminNotes">Admin Notes (Optional)</Label>
-            <Textarea
-              id="adminNotes"
-              placeholder="Add any feedback or notes about the submission..."
-              value={adminNotes}
-              onChange={(e) => setAdminNotes(e.target.value)}
-              rows={3}
-            />
-          </div>
+          {/* Admin Review Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Admin Review</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="admin-notes">Review Notes (required for revision requests)</Label>
+                  <Textarea
+                    id="admin-notes"
+                    placeholder="Provide feedback or revision instructions..."
+                    value={adminNotes}
+                    onChange={(e) => setAdminNotes(e.target.value)}
+                    className="mt-2"
+                    rows={4}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        <DialogFooter className="flex gap-2">
-          <Button variant="outline" onClick={handleClose}>
+        <DialogFooter className="gap-2">
+          <Button variant="outline" onClick={onClose} disabled={loading}>
             Cancel
           </Button>
           <Button 
             variant="destructive" 
-            onClick={handleReject} 
-            disabled={loading || !submission}
+            onClick={handleRequestRevision}
+            disabled={loading || !adminNotes.trim()}
           >
-            <XCircle className="h-4 w-4 mr-1" />
-            {loading ? 'Rejecting...' : 'Reject & Request Revision'}
+            Request Revision
           </Button>
           <Button 
-            onClick={handleApprove} 
-            disabled={loading || !submission}
+            onClick={handleApprove}
+            disabled={loading}
+            className="bg-green-600 hover:bg-green-700"
           >
-            <CheckCircle className="h-4 w-4 mr-1" />
-            {loading ? 'Approving...' : 'Approve'}
+            {loading ? 'Processing...' : 'Approve & Complete'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -314,4 +282,4 @@ const AdminApprovalModal: React.FC<AdminApprovalModalProps> = ({
   );
 };
 
-export default AdminApprovalModal; 
+export default AdminApprovalModal;
