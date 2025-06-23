@@ -1,3 +1,4 @@
+
 import { supabase } from '@/integrations/supabase/client';
 import { Profile } from '@/types/auth';
 
@@ -122,7 +123,13 @@ export class UserService {
         throw error;
       }
 
-      return data;
+      // Add is_active field (default to true if not present)
+      const usersWithActiveStatus = data?.map(user => ({
+        ...user,
+        is_active: user.is_active !== undefined ? user.is_active : true
+      })) || [];
+
+      return usersWithActiveStatus;
     } catch (error) {
       console.error('UserService.getAllUsers error:', error);
       throw error;
@@ -152,7 +159,7 @@ export class UserService {
       }
 
       stats.totalUsers = users?.length || 0;
-      stats.activeWriters = users?.filter(u => u.role === 'writer' && u.is_active).length || 0;
+      stats.activeWriters = users?.filter(u => u.role === 'writer' && (u.is_active !== false)).length || 0;
 
       // Get all assignments
       const { data: assignments, error: assignmentsError } = await supabase
@@ -257,7 +264,13 @@ export class UserService {
         throw error;
       }
 
-      return data;
+      // Add is_active field (default to true if not present)
+      const usersWithActiveStatus = data?.map(user => ({
+        ...user,
+        is_active: user.is_active !== undefined ? user.is_active : true
+      })) || [];
+
+      return usersWithActiveStatus;
     } catch (error) {
       console.error('UserService.getUsersByRole error:', error);
       throw error;
@@ -278,7 +291,9 @@ export class UserService {
         throw error;
       }
 
-      return data;
+      // Filter only active writers
+      const activeWriters = data?.filter(writer => writer.is_active !== false) || [];
+      return activeWriters;
     } catch (error) {
       console.error('UserService.getAvailableWriters error:', error);
       throw error;

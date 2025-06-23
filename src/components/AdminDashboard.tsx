@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,9 @@ import { UserService } from '@/services/userService';
 import { SubmissionService } from '@/services/submissionService';
 import { toast } from '@/components/ui/use-toast';
 import { Database } from '@/integrations/supabase/types';
+import AdminAssignTaskModal from './AdminAssignTaskModal';
+import AdminMessageModal from './AdminMessageModal';
+import AdminApprovalModal from './AdminApprovalModal';
 
 type Assignment = Database['public']['Tables']['assignments']['Row'] & {
   client?: { id: string; first_name?: string; last_name?: string; email: string };
@@ -42,8 +46,8 @@ const AdminDashboard = () => {
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
-  const [showUserManagementModal, setShowUserManagementModal] = useState(false);
   const [selectedAssignment, setSelectedAssignment] = useState<Assignment | null>(null);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
 
   const fetchAssignments = async () => {
     try {
@@ -102,7 +106,6 @@ const AdminDashboard = () => {
       const submission = await SubmissionService.getSubmissionById(submissionId);
       
       if (submission.file_url) {
-        // Create a temporary link to download the file
         const link = document.createElement('a');
         link.href = submission.file_url;
         link.download = `submission-${submissionId}.pdf`;
@@ -136,7 +139,6 @@ const AdminDashboard = () => {
       const submission = await SubmissionService.getSubmissionById(submissionId);
       
       if (submission.file_url) {
-        // Open file in new tab
         window.open(submission.file_url, '_blank');
       } else {
         toast({
@@ -155,8 +157,9 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleMessageUser = (assignment?: Assignment) => {
+  const handleMessageUser = (assignment?: Assignment, user?: User) => {
     setSelectedAssignment(assignment || null);
+    setSelectedUser(user || null);
     setShowMessageModal(true);
   };
 
@@ -168,6 +171,48 @@ const AdminDashboard = () => {
   const handleApproveTask = (assignment: Assignment) => {
     setSelectedAssignment(assignment);
     setShowApprovalModal(true);
+  };
+
+  const handleToggleUserStatus = async (userId: string, currentStatus: boolean) => {
+    try {
+      await UserService.toggleUserStatus(userId, !currentStatus);
+      toast({
+        title: "Success",
+        description: `User ${!currentStatus ? 'activated' : 'deactivated'} successfully`
+      });
+      fetchUsers();
+      fetchStats();
+    } catch (error) {
+      console.error('Error toggling user status:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update user status",
+        variant: "destructive"
+      });
+    }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    if (!confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await UserService.deleteUser(userId);
+      toast({
+        title: "Success",
+        description: "User deleted successfully"
+      });
+      fetchUsers();
+      fetchStats();
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete user",
+        variant: "destructive"
+      });
+    }
   };
 
   const handleAssignmentUpdated = () => {
@@ -186,6 +231,7 @@ const AdminDashboard = () => {
       case "in_progress": return "bg-blue-100 text-blue-800";
       case "submitted": return "bg-purple-100 text-purple-800";
       case "revision_requested": return "bg-yellow-100 text-yellow-800";
+      case "assigned": return "bg-cyan-100 text-cyan-800";
       case "pending": return "bg-gray-100 text-gray-800";
       default: return "bg-gray-100 text-gray-800";
     }
@@ -241,10 +287,6 @@ const AdminDashboard = () => {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setShowUserManagementModal(true)}>
-              <Users className="h-4 w-4 mr-2" />
-              Manage Users
-            </Button>
             <Button variant="outline" onClick={() => setShowMessageModal(true)}>
               <MessageSquare className="h-4 w-4 mr-2" />
               Send Message
@@ -360,6 +402,7 @@ const AdminDashboard = () => {
               >
                 <option value="all">All Status</option>
                 <option value="pending">Pending</option>
+                <option value="assigned">Assigned</option>
                 <option value="in_progress">In Progress</option>
                 <option value="submitted">Submitted</option>
                 <option value="completed">Completed</option>
@@ -375,8 +418,13 @@ const AdminDashboard = () => {
                       <CardTitle className="text-lg">{assignment.title}</CardTitle>
                       <Badge variant="outline">{assignment.subject}</Badge>
                       <Badge className={getStatusColor(assignment.status)}>
-                        <span className="capitalize">{assignment.status.replace('_', ' ')}</span>
+                        <span className="capitalize">{assignment.status?.replace('_', ' ')}</span>
                       </Badge>
+                      {assignment.document_type && (
+                        <Badge variant="outline" className="bg-gray-50">
+                          {assignment.document_type}
+                        </Badge>
+                      )}
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -483,21 +531,39 @@ const AdminDashboard = () => {
                       <Badge className={getRoleColor(user.role)}>
                         {user.role}
                       </Badge>
+                      <Badge variant={user.is_active ? "default" : "secondary"}>
+                        {user.is_active ? "Active" : "Inactive"}
+                      </Badge>
                     </div>
                   </CardHeader>
                   <CardContent>
                     <div className="grid grid-cols-3 gap-4 mb-4 text-sm text-gray-600">
                       <span>Email: {user.email}</span>
                       <span>Joined: {formatDate(user.created_at)}</span>
-                      <span>Status: {(user as any).is_active ? 'Active' : 'Inactive'}</span>
+                      <span>Status: {user.is_active ? 'Active' : 'Inactive'}</span>
                     </div>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline">
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => handleMessageUser(undefined, user)}
+                      >
                         <MessageSquare className="h-4 w-4 mr-1" />
                         Message
                       </Button>
-                      <Button size="sm" variant="outline">
-                        View Profile
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => handleToggleUserStatus(user.id, user.is_active)}
+                      >
+                        {user.is_active ? 'Deactivate' : 'Activate'}
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="destructive"
+                        onClick={() => handleDeleteUser(user.id)}
+                      >
+                        Delete
                       </Button>
                     </div>
                   </CardContent>
@@ -518,99 +584,27 @@ const AdminDashboard = () => {
       </div>
 
       {/* Modals */}
-      {showMessageModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold mb-4">Send Message</h3>
-            <p className="text-gray-600 mb-4">
-              {selectedAssignment 
-                ? `Send message regarding assignment: ${selectedAssignment.title}`
-                : 'Send a general message to users'
-              }
-            </p>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowMessageModal(false)}>
-                Cancel
-              </Button>
-              <Button onClick={() => setShowMessageModal(false)}>
-                Send
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AdminMessageModal
+        isOpen={showMessageModal}
+        onClose={() => setShowMessageModal(false)}
+        assignment={selectedAssignment}
+        user={selectedUser}
+        onMessageSent={handleUserUpdated}
+      />
 
-      {showAssignModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold mb-4">Assign Task</h3>
-            <p className="text-gray-600 mb-4">
-              {selectedAssignment && `Assign "${selectedAssignment.title}" to a writer`}
-            </p>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowAssignModal(false)}>
-                Cancel
-              </Button>
-              <Button onClick={() => setShowAssignModal(false)}>
-                Assign
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AdminAssignTaskModal
+        isOpen={showAssignModal}
+        onClose={() => setShowAssignModal(false)}
+        assignment={selectedAssignment}
+        onAssignmentUpdated={handleAssignmentUpdated}
+      />
 
-      {showApprovalModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg max-w-md w-full mx-4">
-            <h3 className="text-lg font-semibold mb-4">Review & Approve</h3>
-            <p className="text-gray-600 mb-4">
-              {selectedAssignment && `Review submission for: ${selectedAssignment.title}`}
-            </p>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowApprovalModal(false)}>
-                Cancel
-              </Button>
-              <Button onClick={() => setShowApprovalModal(false)}>
-                Approve
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showUserManagementModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg max-w-4xl w-full mx-4 max-h-[80vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4">User Management</h3>
-            <div className="space-y-4">
-              {users.map((user) => (
-                <div key={user.id} className="flex items-center justify-between p-3 border rounded">
-                  <div>
-                    <h4 className="font-medium">{user.first_name} {user.last_name}</h4>
-                    <p className="text-sm text-gray-600">{user.email} - {user.role}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" variant="outline">
-                      Message
-                    </Button>
-                    <Button size="sm" variant="outline">
-                      {(user as any).is_active ? 'Deactivate' : 'Activate'}
-                    </Button>
-                    <Button size="sm" variant="destructive">
-                      Delete
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="flex gap-2 mt-4">
-              <Button variant="outline" onClick={() => setShowUserManagementModal(false)}>
-                Close
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AdminApprovalModal
+        isOpen={showApprovalModal}
+        onClose={() => setShowApprovalModal(false)}
+        assignment={selectedAssignment}
+        onAssignmentUpdated={handleAssignmentUpdated}
+      />
     </div>
   );
 };
