@@ -215,6 +215,25 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleChangeUserRole = async (userId: string, newRole: 'client' | 'writer' | 'admin') => {
+    try {
+      await UserService.changeUserRole(userId, newRole);
+      toast({
+        title: "Success",
+        description: `User role changed to ${newRole} successfully`
+      });
+      fetchUsers();
+      fetchStats();
+    } catch (error) {
+      console.error('Error changing user role:', error);
+      toast({
+        title: "Error",
+        description: "Failed to change user role",
+        variant: "destructive"
+      });
+    }
+  };
+
   const handleAssignmentUpdated = () => {
     fetchAssignments();
     fetchStats();
@@ -542,7 +561,7 @@ const AdminDashboard = () => {
                       <span>Joined: {formatDate(user.created_at)}</span>
                       <span>Status: {user.is_active ? 'Active' : 'Inactive'}</span>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-wrap">
                       <Button 
                         size="sm" 
                         variant="outline"
@@ -554,10 +573,19 @@ const AdminDashboard = () => {
                       <Button 
                         size="sm" 
                         variant="outline"
-                        onClick={() => handleToggleUserStatus(user.id, user.is_active)}
+                        onClick={() => handleToggleUserStatus(user.id, user.is_active || false)}
                       >
                         {user.is_active ? 'Deactivate' : 'Activate'}
                       </Button>
+                      <select
+                        value={user.role}
+                        onChange={(e) => handleChangeUserRole(user.id, e.target.value as 'client' | 'writer' | 'admin')}
+                        className="px-2 py-1 text-sm border border-gray-300 rounded"
+                      >
+                        <option value="client">Client</option>
+                        <option value="writer">Writer</option>
+                        <option value="admin">Admin</option>
+                      </select>
                       <Button 
                         size="sm" 
                         variant="destructive"
@@ -587,8 +615,8 @@ const AdminDashboard = () => {
       <AdminMessageModal
         isOpen={showMessageModal}
         onClose={() => setShowMessageModal(false)}
-        assignment={selectedAssignment}
-        user={selectedUser}
+        assignmentId={selectedAssignment?.id}
+        userId={selectedUser?.id}
         onMessageSent={handleUserUpdated}
       />
 
@@ -603,7 +631,7 @@ const AdminDashboard = () => {
         isOpen={showApprovalModal}
         onClose={() => setShowApprovalModal(false)}
         assignment={selectedAssignment}
-        onAssignmentUpdated={handleAssignmentUpdated}
+        onApprovalComplete={handleAssignmentUpdated}
       />
     </div>
   );
